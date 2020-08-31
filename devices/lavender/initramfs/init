@@ -1,15 +1,13 @@
 #!/bin/sh
 
-export PATH=/bin
-
-USERDATA=/dev/block/mmcblk0p66
+USERDATA=/dev/mmcblk0p66
 FSROOT=/mnt/userdata
 NEWROOT=$FSROOT/gnu
 NEWINIT=/sbin/init
 
 # write log to kmsg
 log() {
-	echo new_era: $@ > /dev/kmsg
+	echo "new_era: $@" > /dev/kmsg
 }
 
 die() {
@@ -17,17 +15,29 @@ die() {
 	exit 1
 }
 
-# set up psuedo-filesystems
-mount -t devtmpfs none /dev
+# set up psuedo-filesystems, /dev is already present
+mkdir /sys /proc || die Failed to make directories /sys and /proc
+
+# mount the pseudofs(s)
+mount -t proc none /proc || die Failed to mount /proc
+mount -t sysfs none /sys || die Failed to mount /sys
+mount -t tmpfs none /dev || die Failed to mount /dev
+
+# populate /dev
+mdev -s || die Failed to populate /dev
 
 log Preinit started!
 log Trying to mount $USERDATA on $FSROOT...
-mkdir -p $FSROOT
-mount -t ext4 $USERDATA $FSROOT || die Failed to mount $USERDATA
+mkdir -p $FSROOT	|| die Failed to make the directory $FSROOT
+ 
+mount $USERDATA $FSROOT || die Failed to mount $USERDATA
 
 log Setting up $NEWROOT as mountpoint...
-mount -o bind,ro $NEWROOT $NEWROOT || die Failed to setup $NEWROOT as mountpoint
+mount -r --bind $NEWROOT $NEWROOT || die Failed to setup $NEWROOT as mountpoint
 
 log Cleaning up mounts, switching root to $NEWROOT, and launching $NEWINIT...
-mount --move /dev $NEWROOT/dev
-exec switch_root $NEWROOT $NEWINIT
+mount --move /dev $NEWROOT/dev || die Failed to move /dev
+mount --move /sys $NEWROOT/sys || die Failed to move /sys
+mount --move /proc $NEWROOT/proc || die Failed to move /proc
+
+exec switch_root $NEWROOT $NEWINIT || die Failed to switch_root to $NEWINIT
